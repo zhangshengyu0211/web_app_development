@@ -1,87 +1,85 @@
-# 系統流程圖與使用者操作路徑 (Flowcharts) - 食譜收藏夾系統
+# 流程圖設計 (Flowchart) - 任務管理系統
 
-以下文件根據現有的 [PRD.md](./PRD.md) 和 [ARCHITECTURE.md](./ARCHITECTURE.md) 設計，透過視覺化圖表釐清使用者的操作路徑與後端的資料流，並定義出各個功能的對應路由。
+根據 PRD 與系統架構文件，本文件規劃了使用者的操作流程圖、系統資料處理的序列圖，以及功能對應列表。
 
-## 1. 使用者流程圖（User Flow）
+## 1. 使用者流程圖 (User Flow)
 
-此流程圖呈現一般使用者從進入網站開始，可能採取的各項操作行為。包含了「身份驗證」、「瀏覽與搜尋」以及「食譜管理」等核心情境。
+描述使用者進入系統後，可以進行的各項操作路徑。
 
 ```mermaid
-flowchart TD
-  A([使用者開啟網頁]) --> B[首頁 / 搜尋入口]
-
-  %% 搜尋與瀏覽分支
-  B --> C{選擇搜尋方式}
-  C -->|關鍵字搜尋| D[食譜列表頁]
-  C -->|食材組合過濾| E[對應食材食譜列表頁]
-  
-  D --> F[單一食譜詳情頁]
-  E --> F
-  
-  %% 會員與登入分支
-  B --> G{會員狀態}
-  G -->|未登入| H[登入/註冊頁面]
-  H -->|成功| B
-  
-  G -->|已登入| I[會員中心 / 我的收藏]
-  I --> J{操作項目}
-  
-  %% 增刪改查分支
-  J -->|新增| K[填寫新建食譜表單]
-  K -->|儲存| L([資料庫處理並重導覽])
-  L --> F
-  
-  J -->|查看與管理個人食譜| D
-  D -->|若為自己擁有的食譜| M{編輯或刪除?}
-  M -->|編輯| N[填寫編輯食譜表單]
-  N -->|儲存| L
-  M -->|刪除| O([確認刪除重導向])
-  O --> I
+flowchart LR
+    Start([使用者開啟網頁]) --> Home[首頁 - 任務清單總覽]
+    
+    Home --> Action{要執行什麼操作？}
+    
+    %% 新增任務流程
+    Action -->|新增任務| InputForm[在輸入框輸入任務名稱]
+    InputForm --> SubmitBtn[點擊「新增」按鈕]
+    SubmitBtn --> |系統處理中| ReloadHome1[重新載入並顯示新任務]
+    ReloadHome1 --> Home
+    
+    %% 狀態篩選流程
+    Action -->|切換視角| Filter[點擊狀態篩選 (全部/未完成/已完成)]
+    Filter --> |載入特定任務| ReloadHome2[重新載入過濾後的清單]
+    ReloadHome2 --> Home
+    
+    %% 狀態切換流程
+    Action -->|更新狀態| ToggleStatus[點擊任務旁的狀態切換開關]
+    ToggleStatus --> |標記為已完成/未完成| ReloadHome3[狀態更新並重新載入]
+    ReloadHome3 --> Home
+    
+    %% 刪除任務流程
+    Action -->|刪除任務| DeleteBtn[點擊「刪除」按鈕]
+    DeleteBtn --> |移除資料| ReloadHome4[任務消失並重新載入]
+    ReloadHome4 --> Home
 ```
 
-## 2. 系統序列圖（Sequence Diagram）
+## 2. 系統序列圖 (Sequence Diagram)
 
-此圖以「**使用者新增食譜**」這項操作為例，詳細描繪了整個系統後端（MVC 架構）的運作順序——從網頁送出請求到資料庫存取並回傳重新導向的流程。
+描述「使用者新增任務」時，資料如何在系統各元件間流動。
 
 ```mermaid
 sequenceDiagram
-  actor User as 使用者
-  participant Browser as 瀏覽器
-  participant Route as Flask Route (Controller)
-  participant Model as Model (資料庫互動層)
-  participant DB as SQLite DB
-  
-  User->>Browser: 填寫「新增食譜表單」並點擊送出
-  Browser->>Route: 發送 POST /recipes 請求 (夾帶表單資料)
-  
-  Route->>Route: 1. 驗證使用者是否已登入
-  Route->>Route: 2. 驗證表單輸入 (如：標題是否空白)
-  
-  Route->>Model: 呼叫 Recipe.create(data)
-  Model->>DB: 執行 INSERT INTO recipes ...
-  DB-->>Model: 回傳新記錄的建立狀態 (ID)
-  Model-->>Route: 回傳新建食譜的物件
-  
-  Route-->>Browser: 回傳 HTTP 302 Redirect 重導向至 /recipes/{id} (詳情頁)
-  Browser->>User: 顯示已成功新增的食譜頁面
+    actor User as 使用者
+    participant Browser as 瀏覽器 (HTML 介面)
+    participant Flask as Flask Route (Controller)
+    participant Model as Task Model 
+    participant DB as SQLite (資料庫)
+
+    User->>Browser: 在欄位輸入任務名稱並點擊提交表單
+    Browser->>Flask: 發送 POST 請求 (/tasks/add) 帶入任務名稱
+    
+    %% 驗證與處理
+    Flask->>Flask: 驗證輸入內容是否為空
+    alt 驗證失敗 (空任務)
+        Flask-->>Browser: 重導向至首頁，並顯示錯誤提示
+    else 驗證成功
+        Flask->>Model: 呼叫新增任務邏輯
+        Model->>DB: 執行 SQL INSERT INTO Task
+        DB-->>Model: 回傳成功訊息與 Task ID
+        Model-->>Flask: 任務建立完成
+        Flask-->>Browser: 重導向至首頁 (302 Redirect to /)
+    end
+    
+    %% 重導向後的網頁載入
+    Browser->>Flask: 發送 GET 請求 (/)
+    Flask->>Model: 查詢最新任務清單
+    Model->>DB: 執行 SQL SELECT * FROM Task
+    DB-->>Model: 回傳所有的任務資料
+    Model-->>Flask: 回傳 Task 物件清單
+    Flask-->>Browser: 渲染 Jinja2 模板並回傳 HTML
+    Browser-->>User: 看到畫面上顯示剛新增的任務清單
 ```
 
 ## 3. 功能清單對照表
 
-本清單列出未來將實作的功能，以及對應的 URL 路徑 (Routes) 和 HTTP 請求方法。由於原生 HTML 表單僅支援 GET 與 POST，故我們在更新/刪除資源時會透過 `POST` 方法加上特定後綴路徑來實作。
+以下整理了系統主要功能、其對應的 URL 路徑，以及前端發送的 HTTP 方法：
 
-| 功能模塊 | 具體功能描述 | HTTP 方法 | URL 路徑 (Route) | 備註 |
-| --- | --- | --- | --- | --- |
-| **公開瀏覽** | 網站首頁 | GET | `/` | 顯示搜尋框與推薦食譜 |
-| | 食譜列表與搜尋結果 | GET | `/recipes` | 若帶有 `?q=` 參數則為關鍵字搜尋 |
-| | 食材組合過濾搜尋 | GET | `/recipes/search_by_ingredients` | 依據選擇的多樣食材進行過濾 |
-| | 檢視單一食譜詳情 | GET | `/recipes/<int:recipe_id>` | 查看公開的食譜 |
-| **會員管理** | 註冊帳號頁面與處理 | GET / POST | `/register` | 包含頁面渲染(GET)與表單送出(POST) |
-| | 登入頁面與處理 | GET / POST | `/login` | 驗證帳密並建立 Session |
-| | 登出處理 | GET | `/logout` | 清除使用者 Session |
-| **食譜管理<br>(需登入)** | 新增食譜頁面 | GET | `/recipes/new` | 提供空白輸入表單 |
-| | 儲存新食譜資料 | POST | `/recipes` | 將表單接收並寫入資料庫 |
-| | 編輯食譜頁面 | GET | `/recipes/<int:recipe_id>/edit` | 將既有資料填入表單讓使用者修改 |
-| | 儲存修改的食譜 | POST | `/recipes/<int:recipe_id>/update` | 儲存使用者更新的資料 |
-| | 刪除食譜 | POST | `/recipes/<int:recipe_id>/delete` | 驗證擁有者身分或管理員權限後刪除 |
-| **後台管理** | 管理員儀表板 | GET | `/admin` | 僅允許管理員檢視全域食譜與用戶列表 |
+| 功能名稱 | URL 路徑 | HTTP 方法 | 說明 |
+| --- | --- | --- | --- |
+| 顯示清單與篩選 | `/` | GET | 顯示任務清單。可透過 Query Parameter（如 `/?filter=completed`）顯示過濾後的任務 |
+| 新增任務 | `/tasks/add` | POST | 接收表單內容並新增任務，成功後重新導向至 `/` |
+| 切換完成狀態 | `/tasks/<int:task_id>/toggle` | POST | 切換該任務的完成狀態（未完成變已完成，反之亦然），完成後重新導向至 `/` |
+| 刪除任務 | `/tasks/<int:task_id>/delete` | POST | 刪除特定任務，成功後重新導向至 `/` |
+
+> **說明**：由於初期架構採傳統網頁應用（SSR）、HTML 表單提交，為確保資料安全與遵循 HTTP 標準，狀態切換與刪除等會改變資料狀態的操作，皆使用 `POST` 方法發送至伺服器處理。
